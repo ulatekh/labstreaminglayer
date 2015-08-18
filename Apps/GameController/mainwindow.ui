@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>216</width>
-    <height>113</height>
+    <height>192</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -34,6 +34,34 @@
        </widget>
       </item>
      </layout>
+    </item>
+    <item>
+     <layout class="QHBoxLayout" name="horizontalLayout_Hertz">
+      <item>
+       <widget class="QLabel" name="hertzLabel">
+        <property name="text">
+         <string>Events per second:</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLineEdit" name="hertzLineEdit"/>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <widget class="QCheckBox" name="timerCheckBox">
+      <property name="text">
+       <string>Use event timer</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QCheckBox" name="logCheckBox">
+      <property name="text">
+       <string>Write log</string>
+      </property>
+     </widget>
     </item>
     <item>
      <spacer name="verticalSpacer">
@@ -65,6 +93,9 @@
       </item>
       <item>
        <widget class="QPushButton" name="linkButton">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
         <property name="text">
          <string>Link</string>
         </property>
@@ -80,7 +111,7 @@
      <x>0</x>
      <y>0</y>
      <width>216</width>
-     <height>18</height>
+     <height>21</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
