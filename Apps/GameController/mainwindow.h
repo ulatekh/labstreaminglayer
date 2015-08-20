@@ -21,6 +21,9 @@
 #pragma comment (lib,"dxguid.lib")
 
 // LSL API
+#ifndef NDEBUG
+#define LSL_DEBUG_BINDINGS
+#endif // !NDEBUG
 #include <lsl_cpp.h>
 
 

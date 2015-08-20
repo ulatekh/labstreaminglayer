@@ -291,11 +291,11 @@ void MainWindow::link() {
 void MainWindow::gamecontroller_start(std::string name)
 {
 	// create streaminfo and outlet for the button events
-	infoButtons_ = new lsl::stream_info(name + "Buttons","Markers",1,lsl::IRREGULAR_RATE,lsl::cf_string,name + "_Buttons_" + boost::asio::ip::host_name());
+	infoButtons_ = new lsl::stream_info(name + "Buttons","GameControllerMarkers",1,lsl::IRREGULAR_RATE,lsl::cf_string,name + "_Buttons_" + boost::asio::ip::host_name());
 	outletButtons_ = new lsl::stream_outlet(*infoButtons_);
 
 	// create streaminfo and outlet for the axes
-	infoAxes_ = new lsl::stream_info(name + "Axes","Position",36,60,lsl::cf_float32,name + "_Axes_" + boost::asio::ip::host_name());
+	infoAxes_ = new lsl::stream_info(name + "Axes","GameControllerPosition",36,60,lsl::cf_float32,name + "_Axes_" + boost::asio::ip::host_name());
 	// append some meta-data...
 	lsl::xml_element channels = infoAxes_->desc().append_child("channels");
 	channels.append_child("channel")
