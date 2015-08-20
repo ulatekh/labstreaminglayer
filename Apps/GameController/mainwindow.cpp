@@ -15,6 +15,14 @@ MainWindow::MainWindow(QWidget *parent, const std::string &config_file) :
 QMainWindow(parent), ui(new Ui::MainWindow), pDI(NULL), pController(NULL)
 {
 	try {
+		// No timer yet.
+		timer_ = NULL;
+
+		// Get our time reference, i.e. so that LSL local-clock times can
+		// be converted to UTC date/time.
+		ptSystemStart_ = boost::posix_time::microsec_clock::universal_time();
+		dLocaltimeStart_ = lsl::local_clock();
+
 		ui->setupUi(this);
 
 		HRESULT hr;
@@ -29,6 +37,9 @@ QMainWindow(parent), ui(new Ui::MainWindow), pDI(NULL), pController(NULL)
 		if (indexToInstance_.empty())
 			throw std::runtime_error("No game controllers are plugged in.");
 
+		// set up validation
+		ui->hertzLineEdit->setValidator(new QIntValidator(1, 100, ui->hertzLineEdit));
+
 		// parse startup config file
 		load_config(config_file);
 
@@ -37,6 +48,7 @@ QMainWindow(parent), ui(new Ui::MainWindow), pDI(NULL), pController(NULL)
 		QObject::connect(ui->linkButton, SIGNAL(clicked()), this, SLOT(link()));
 		QObject::connect(ui->actionLoad_Configuration, SIGNAL(triggered()), this, SLOT(load_config_dialog()));
 		QObject::connect(ui->actionSave_Configuration, SIGNAL(triggered()), this, SLOT(save_config_dialog()));
+		QObject::connect(ui->hertzLineEdit, SIGNAL(editingFinished()), this, SLOT(hertzLineEdit_editingFinished()));
 	} catch(std::exception &e) {
 		QMessageBox::critical(this,"Error",e.what(),QMessageBox::Ok);
 		throw;
@@ -45,18 +57,18 @@ QMainWindow(parent), ui(new Ui::MainWindow), pDI(NULL), pController(NULL)
 
 // enumerates controller features and sets ranges for the axes
 BOOL CALLBACK MainWindow::object_enum_callback(const DIDEVICEOBJECTINSTANCE* pdidoi, VOID *pWindow) {
-    if(pdidoi->dwType & DIDFT_AXIS) {
-        DIPROPRANGE diprg; 
-        diprg.diph.dwSize       = sizeof(DIPROPRANGE); 
-        diprg.diph.dwHeaderSize = sizeof(DIPROPHEADER); 
-        diprg.diph.dwHow        = DIPH_BYID; 
-        diprg.diph.dwObj        = pdidoi->dwType;
-        diprg.lMin              = -1000; 
-        diprg.lMax              = +1000; 
-        // Set the range for the axis
-        ((MainWindow*)pWindow)->pController->SetProperty(DIPROP_RANGE,&diprg.diph);
-    }
-    return DIENUM_CONTINUE;
+	if(pdidoi->dwType & DIDFT_AXIS) {
+		DIPROPRANGE diprg; 
+		diprg.diph.dwSize       = sizeof(DIPROPRANGE); 
+		diprg.diph.dwHeaderSize = sizeof(DIPROPHEADER); 
+		diprg.diph.dwHow        = DIPH_BYID; 
+		diprg.diph.dwObj        = pdidoi->dwType;
+		diprg.lMin              = -1000; 
+		diprg.lMax              = +1000; 
+		// Set the range for the axis
+		((MainWindow*)pWindow)->pController->SetProperty(DIPROP_RANGE,&diprg.diph);
+	}
+	return DIENUM_CONTINUE;
 }
 
 // enumerates controllers and populates GUI combobox with them
@@ -114,6 +126,21 @@ void MainWindow::load_config(const std::string &filename) {
 			} else
 				ui->deviceSelector->setCurrentIndex(indexToInstance_.right.at(deviceguid));
 		}
+
+		// get value for events-per-second
+		iEventsPerSecond_ = pt.get(L"settings.eventsPerSecond", 1);
+		ui->hertzLineEdit->setText(boost::lexical_cast<std::string>(iEventsPerSecond_).c_str());
+
+		// get value for use-timer-event
+		bool bUseTimer = pt.get(L"settings.useTimerEvent", false);
+		ui->timerCheckBox->setChecked(bUseTimer);
+
+		// get value for write-log
+		bool bWriteLog = pt.get(L"settings.writeLog", false);
+		ui->logCheckBox->setChecked(bWriteLog);
+
+		// determine if "link" button can be enabled
+		this->hertzLineEdit_editingFinished();
 	} catch(std::exception &) {
 		QMessageBox::information(this,"Error in Config File","Could not read out config parameters.",QMessageBox::Ok);
 		return;
@@ -127,6 +154,12 @@ void MainWindow::save_config(const std::string &filename) {
 	// transfer UI content into property tree
 	try {
 		pt.put(L"settings.deviceguid",indexToInstance_.left.at(ui->deviceSelector->currentIndex()));
+		if (iEventsPerSecond_ != 1 /* default */)
+			pt.put(L"settings.eventsPerSecond", iEventsPerSecond_);
+		if (ui->timerCheckBox->isChecked() != false /* default */)
+			pt.put(L"settings.useTimerEvent", ui->timerCheckBox->isChecked());
+		if (ui->logCheckBox->isChecked() != false /* default */)
+			pt.put(L"settings.writeLog", ui->logCheckBox->isChecked());
 	} catch(std::exception &e) {
 		QMessageBox::critical(this,"Error",(std::string("Could not prepare settings for saving: ")+=e.what()).c_str(),QMessageBox::Ok);
 	}
@@ -139,6 +172,16 @@ void MainWindow::save_config(const std::string &filename) {
 	}
 }
 
+void MainWindow::hertzLineEdit_editingFinished()
+{
+	// Get the update rate.
+	QByteArray oString = ui->hertzLineEdit->text().toAscii();
+	const char *pszString = oString.constData();
+	sscanf(pszString, "%d", &iEventsPerSecond_);
+
+	// Input is valid, so allow linking.
+	ui->linkButton->setEnabled(true);
+}
 
 // start/stop the GameController connection
 void MainWindow::link() {
@@ -159,6 +202,28 @@ void MainWindow::link() {
 			return;
 		}
 
+		// Allow configuration changes again.
+		ui->deviceSelector->setEnabled(true);
+		ui->hertzLineEdit->setEnabled(true);
+		ui->timerCheckBox->setEnabled(true);
+		ui->logCheckBox->setEnabled(true);
+
+		// indicate that we are now successfully unlinked
+		ui->linkButton->setText("Link");
+	} else if (timer_ != NULL) {
+		// Stop the timer.
+		::timeKillEvent(timer_);
+		timer_ = NULL;
+
+		// Stop reading from the game-controller.
+		gamecontroller_stop();
+
+		// Allow configuration changes again.
+		ui->deviceSelector->setEnabled(true);
+		ui->hertzLineEdit->setEnabled(true);
+		ui->timerCheckBox->setEnabled(true);
+		ui->logCheckBox->setEnabled(true);
+
 		// indicate that we are now successfully unlinked
 		ui->linkButton->setText("Link");
 	} else {
@@ -171,7 +236,7 @@ void MainWindow::link() {
 			if (FAILED(hr=CLSIDFromString((LPOLESTR)guidstr.c_str(),&guid)))
 				throw std::runtime_error("Did not find the selected device. Is it plugged in?");
 
-		    // Obtain an interface to the selected joystick
+			// Obtain an interface to the selected joystick
 			if (FAILED(hr=pDI->CreateDevice(guid,&pController,NULL)))
 				throw std::runtime_error("Could not instantiate the selected device. Is it plugged in?");
 
@@ -180,7 +245,7 @@ void MainWindow::link() {
 				throw std::runtime_error("Could not select data format for the controller. The controller might not be fully compatible with DirectInput.");
 
 			// set cooperative level
-		    if (FAILED(hr=pController->SetCooperativeLevel(winId(), DISCL_BACKGROUND | DISCL_NONEXCLUSIVE)))
+			if (FAILED(hr=pController->SetCooperativeLevel(winId(), DISCL_BACKGROUND | DISCL_NONEXCLUSIVE)))
 				throw std::runtime_error("Could not set cooperative level for the device. There might be another application running that demands exclusive access to the device.");
 
 			// try to enumerate the device features; we'll do this to set the ranges for the axes
@@ -192,31 +257,47 @@ void MainWindow::link() {
 				throw std::runtime_error("Could not acquire access to the selected controller. Is another program using it in exclusive mode?");
 
 			// start reading
-			stop_ = false;
-			reader_thread_.reset(new boost::thread(&MainWindow::read_thread,this,name));
+			if (ui->timerCheckBox->isChecked())
+			{
+				// Set up to read from the game-controller.
+				gamecontroller_start(name);
+
+				// Set up the timer.
+				timer_ = ::timeSetEvent(1000 / iEventsPerSecond_, 1, &s_timer_callback,
+					(DWORD_PTR)this, TIME_PERIODIC | TIME_KILL_SYNCHRONOUS);
+			}
+			else
+			{
+				stop_ = false;
+				reader_thread_.reset(new boost::thread(&MainWindow::read_thread,this,name));
+			}
 		}
 		catch(std::exception &e) {
 			QMessageBox::critical(this,"Error",(std::string("Could not initialize the GameController interface: ")+=e.what()).c_str(),QMessageBox::Ok);
 			return;
 		}
 
+		// Disallow configuration changes while linked.
+		ui->deviceSelector->setEnabled(false);
+		ui->hertzLineEdit->setEnabled(false);
+		ui->timerCheckBox->setEnabled(false);
+		ui->logCheckBox->setEnabled(false);
+
 		// done, all successful
 		ui->linkButton->setText("Unlink");
 	}
 }
 
-// background data reader thread
-void MainWindow::read_thread(std::string name) {
-	HRESULT hr;
-
+void MainWindow::gamecontroller_start(std::string name)
+{
 	// create streaminfo and outlet for the button events
-	lsl::stream_info infoButtons(name + "Buttons","Markers",1,lsl::IRREGULAR_RATE,lsl::cf_string,name + "_Buttons_" + boost::asio::ip::host_name());
-	lsl::stream_outlet outletButtons(infoButtons);
+	infoButtons_ = new lsl::stream_info(name + "Buttons","Markers",1,lsl::IRREGULAR_RATE,lsl::cf_string,name + "_Buttons_" + boost::asio::ip::host_name());
+	outletButtons_ = new lsl::stream_outlet(*infoButtons_);
 
 	// create streaminfo and outlet for the axes
-	lsl::stream_info infoAxes(name + "Axes","Position",36,60,lsl::cf_float32,name + "_Axes_" + boost::asio::ip::host_name());
+	infoAxes_ = new lsl::stream_info(name + "Axes","Position",36,60,lsl::cf_float32,name + "_Axes_" + boost::asio::ip::host_name());
 	// append some meta-data...
-	lsl::xml_element channels = infoAxes.desc().append_child("channels");
+	lsl::xml_element channels = infoAxes_->desc().append_child("channels");
 	channels.append_child("channel")
 		.append_child_value("label","X")
 		.append_child_value("type","PositionX")
@@ -361,54 +442,123 @@ void MainWindow::read_thread(std::string name) {
 		.append_child_value("label","FV")
 		.append_child_value("type","ForceV")
 		.append_child_value("unit","normalized_signed");
-	infoAxes.desc().append_child("acquisition")
+	infoAxes_->desc().append_child("acquisition")
 		.append_child_value("model",name.c_str());
-	lsl::stream_outlet outletAxes(infoAxes);
+	outletAxes_ = new lsl::stream_outlet(*infoAxes_);
+
+	for (int i = 0; i < _countof(waspressed_); ++i)
+		waspressed_[i] = false;
+	t_start_ = boost::posix_time::microsec_clock::local_time();
+	t_=0;
+
+	// Open a log file with the current date/time.
+	if (ui->logCheckBox->isChecked())
+	{
+		boost::posix_time::ptime ptNow = boost::posix_time::microsec_clock::universal_time();
+		std::locale loc(std::cout.getloc(),
+			new boost::posix_time::time_facet("%Y%m%d_%H%M%S"));
+		std::basic_stringstream<char> ss;
+		ss.imbue(loc);
+		ss << "log_" << ptNow << ".csv";
+		logFile_.open(ss.str().c_str(), std::ios::out);
+		logStream_ = new std::ostream(&logFile_);
+		(*logStream_) << "Timestamp,X,Y,Z" << std::endl;
+	}
+}
+
+void MainWindow::gamecontroller_frame()
+{
+	HRESULT hr;
+	DIJOYSTATE2 js;	
+
+	// poll the device
+	if (FAILED(hr=pController->Poll()))
+		while (!stop_ && (hr = pController->Acquire()) == DIERR_INPUTLOST) ;
+
+	// obtain its input state
+	if (FAILED(hr=pController->GetDeviceState(sizeof(DIJOYSTATE2),&js)))
+		QMessageBox::critical(this,"Error","Cannot obtain device state.",QMessageBox::Ok);
+
+	double now = lsl::local_clock();
+
+	// construct the axes sample and send it off
+	float sample[36] = {js.lX,js.lY,js.lZ,js.lRx,js.lRy,js.lRz,js.rglSlider[0],js.rglSlider[1],
+		js.rgdwPOV[0],js.rgdwPOV[1],js.rgdwPOV[2],js.rgdwPOV[3],js.lVX,js.lVY,js.lVZ,js.lVRx,js.lVRy,js.lVRz,
+		js.rglVSlider[0],js.rglVSlider[1],js.lAX,js.lAY,js.lAZ,js.lARx,js.lARy,js.lARz,js.rglASlider[0],
+		js.rglASlider[1],js.lFX,js.lFY,js.lFZ,js.lFRx,js.lFRy,js.lFRz,js.rglFSlider[0],js.rglFSlider[0]};
+	// scale the numbers
+	for (int k=0;k<36;k++)
+		sample[k] /= 1000.0;
+	outletAxes_->push_sample(sample,now);
+
+	if (ui->logCheckBox->isChecked())
+	{
+		// Convert the seconds-since-epoch value to a system time.
+		boost::posix_time::ptime ptNow = ptSystemStart_
+			+ boost::posix_time::microseconds((now - dLocaltimeStart_) * 1000000.0);
+		std::string strTime = boost::gregorian::to_iso_extended_string_type<char>(ptNow.date())
+			+ " " + boost::posix_time::to_simple_string_type<char>(ptNow.time_of_day()) + "Z";
+
+		// Log this game-controller sample.
+		(*logStream_) << strTime << "," << js.lX << "," << js.lY << "," << js.lZ << std::endl;
+		/* char aszMsg[256];
+		sprintf (aszMsg, "%s,%ld,%ld,%ld\n", strTime.c_str(),
+			js.lX, js.lY, js.lZ);
+		::OutputDebugStringA(aszMsg); */
+	}
+
+	// generate the button-event samples...
+	for (int i=0; i<128; i++) {
+		if ((js.rgbButtons[i]&0x80)) {
+			if (!waspressed_[i]) {
+				waspressed_[i] = true;
+				std::string text("Button" + boost::lexical_cast<std::string>(i) + " pressed");
+				outletButtons_->push_sample(&text,now);
+			}
+		} else {
+			if (waspressed_[i]) {
+				waspressed_[i] = false;
+				std::string text("Button" + boost::lexical_cast<std::string>(i) + " released");
+				outletButtons_->push_sample(&text,now);
+			}
+		}
+	}		
+}
+
+void MainWindow::gamecontroller_stop()
+{
+	if (ui->logCheckBox->isChecked())
+	{
+		logStream_->flush();
+		logFile_.close();
+		SAFE_DELETE(logStream_);
+	}
+
+	SAFE_DELETE(outletAxes_);
+	SAFE_DELETE(infoAxes_);
+	SAFE_DELETE(outletButtons_);
+	SAFE_DELETE(infoButtons_);
+}
+
+// background data reader thread
+void MainWindow::read_thread(std::string name) {
+	gamecontroller_start(name);
 
 	// enter transmission loop
-	bool waspressed[128] = {false};
-	DIJOYSTATE2 js;	
-	boost::posix_time::ptime t_start = boost::posix_time::microsec_clock::local_time();
-	boost::int64_t t=0;
 	while (!stop_) {
-		// poll the device
-		if (FAILED(hr=pController->Poll()))
-			while (!stop_ && (hr = pController->Acquire()) == DIERR_INPUTLOST) ;
-
-		// obtain its input state
-		if (FAILED(hr=pController->GetDeviceState(sizeof(DIJOYSTATE2),&js)))
-			QMessageBox::critical(this,"Error","Cannot obtain device state.",QMessageBox::Ok);
-
-		double now = lsl::local_clock();
-
-		// construct the axes sample and send it off
-		float sample[36] = {js.lX,js.lY,js.lZ,js.lRx,js.lRy,js.lRz,js.rglSlider[0],js.rglSlider[1],
-			js.rgdwPOV[0],js.rgdwPOV[1],js.rgdwPOV[2],js.rgdwPOV[3],js.lVX,js.lVY,js.lVZ,js.lVRx,js.lVRy,js.lVRz,
-			js.rglVSlider[0],js.rglVSlider[1],js.lAX,js.lAY,js.lAZ,js.lARx,js.lARy,js.lARz,js.rglASlider[0],
-			js.rglASlider[1],js.lFX,js.lFY,js.lFZ,js.lFRx,js.lFRy,js.lFRz,js.rglFSlider[0],js.rglFSlider[0]};
-		// scale the numbers
-		for (int k=0;k<36;k++)
-			sample[k] /= 1000.0;
-		outletAxes.push_sample(sample,now);
-
-		// generate the button-event samples...
-		for (int i=0; i<128; i++) {
-			if ((js.rgbButtons[i]&0x80)) {
-				if (!waspressed[i]) {
-					waspressed[i] = true;
-					std::string text("Button" + boost::lexical_cast<std::string>(i) + " pressed");
-					outletButtons.push_sample(&text,now);
-				}
-			} else {
-				if (waspressed[i]) {
-					waspressed[i] = false;
-					std::string text("Button" + boost::lexical_cast<std::string>(i) + " released");
-					outletButtons.push_sample(&text,now);
-				}
-			}
-		}		
-		boost::this_thread::sleep(t_start + boost::posix_time::millisec((++t)*16));
+		gamecontroller_frame();
+		boost::this_thread::sleep(t_start_ + boost::posix_time::millisec((++t_)*(1000 / iEventsPerSecond_)));
 	}
+
+	gamecontroller_stop();
+}
+
+// timer callback
+void CALLBACK MainWindow::s_timer_callback(UINT /* uTimerID */, UINT /* uMsg */, DWORD_PTR dwUser,
+	DWORD_PTR /* dw1 */, DWORD_PTR /* dw2 */)
+{
+	MainWindow *pThis = (MainWindow *)dwUser;
+	pThis->gamecontroller_frame();
 }
 
 MainWindow::~MainWindow() {
