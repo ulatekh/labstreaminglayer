@@ -120,8 +120,9 @@ namespace lsl {
         * Core stream information is specified here. Any remaining meta-data can be added later.
         * @param name Name of the stream. Describes the device (or product series) that this stream makes available 
         *             (for use by programs, experimenters or data analysts). Cannot be empty.
-        * @param type Content type of the stream. Please see Table of Content Types in the documentation for naming recommendations.
-        *             The content type is the preferred way to find streams (as opposed to searching by name).
+		* @param type Content type of the stream. Please see https://github.com/sccn/xdf/wiki/Meta-Data (or web search for:
+		*             XDF meta-data) for pre-defined content-type names, but you can also make up your own.
+		*             The content type is the preferred way to find streams (as opposed to searching by name).
         * @param channel_count Number of channels per sample. This stays constant for the lifetime of the stream.
         * @param nominal_srate The sampling rate (in Hz) as advertised by the data source, if regular (otherwise set to IRREGULAR_RATE).
         * @param channel_format Format/type of each channel. If your channels have different formats, consider supplying 
@@ -153,7 +154,7 @@ namespace lsl {
         * The content type is a short string such as "EEG", "Gaze" which describes the content carried by the channel (if known). 
         * If a stream contains mixed content this value need not be assigned but may instead be stored in the description of channel types.
         * To be useful to applications and automated processing systems using the recommended content types is preferred. 
-        * See Table of Content Types in the documentation.
+        * Content types usually follow those pre-defined in https://github.com/sccn/xdf/wiki/Meta-Data (or web search for: XDF meta-data).
         */
         std::string type() const { return lsl_get_type(obj); }
 
@@ -218,7 +219,7 @@ namespace lsl {
         * The session id is an optional human-assigned identifier of the recording session.
         * While it is rarely used, it can be used to prevent concurrent recording activitites 
         * on the same sub-network (e.g., in multiple experiment areas) from seeing each other's streams 
-        * (assigned via a configuration file by the experimenter, see Configuration File in the docs).
+        * (assigned via a configuration file by the experimenter, see Network Connectivity in the LSL wiki).
         */
         std::string session_id() const { return lsl_get_session_id(obj); }
 
@@ -235,9 +236,10 @@ namespace lsl {
         /**
         * Extended description of the stream.
         * It is highly recommended that at least the channel labels are described here. 
-        * See code examples in the documentation. Other information, such as amplifier settings, 
+        * See code examples on the LSL wiki. Other information, such as amplifier settings, 
         * measurement units if deviating from defaults, setup information, subject information, etc., 
-        * can be specified here, as well. See Meta-Data Recommendations in the docs.
+		* can be specified here, as well. Meta-data recommendations follow the XDF file format project
+		* (github.com/sccn/xdf/wiki/Meta-Data or web search for: XDF meta-data).
         *
         * Important: if you use a stream content type for which meta-data recommendations exist, please 
         * try to lay out your meta-data in agreement with these recommendations for compatibility with other applications.
@@ -269,7 +271,7 @@ namespace lsl {
         lsl_streaminfo handle() const { return obj; }
 
         /// Default contructor.
-        stream_info(): obj(lsl_create_streaminfo("untitled","",0,0,(lsl_channel_format_t)cf_undefined,"")) {}
+		stream_info() : obj(lsl_create_streaminfo((char *)"untitled", (char *)"", 0, 0, (lsl_channel_format_t)cf_undefined, (char *)"")) {}
 
         /// Copy constructor.
         stream_info(const stream_info &rhs): obj(lsl_copy_streaminfo((lsl_streaminfo)rhs.obj)) {}
@@ -305,7 +307,7 @@ namespace lsl {
         * @param max_buffered Optionally the maximum amount of data to buffer (in seconds if there is a nominal 
         *                     sampling rate, otherwise x100 in samples). The default is 6 minutes of data. 
         */
-        stream_outlet(const stream_info &info, int chunk_size=0, int max_buffered=360): obj(lsl_create_outlet(info.handle(),chunk_size,max_buffered)), channel_count(info.channel_count()) {}
+        stream_outlet(const stream_info &info, int chunk_size=0, int max_buffered=360): channel_count(info.channel_count()), obj(lsl_create_outlet(info.handle(),chunk_size,max_buffered)) {}
 
 
         // ========================================
@@ -574,7 +576,7 @@ namespace lsl {
         * Wait until some consumer shows up (without wasting resources).
         * @return True if the wait was successful, false if the timeout expired.
         */
-        bool wait_for_consumers(double timeout) { lsl_wait_for_consumers(obj,timeout); }
+        bool wait_for_consumers(double timeout) { return lsl_wait_for_consumers(obj,timeout) != 0; }
 
         /**
         * Retrieve the stream info provided by this outlet.
@@ -614,7 +616,7 @@ namespace lsl {
     * The network is usually the subnet specified at the local router, but may also include 
     * a multicast group of machines (given that the network supports it), or list of hostnames.
     * These details may optionally be customized by the experimenter in a configuration file 
-    * (see Configuration File in the documentation).
+    * (see Network Connectivity in the LSL wiki).
     * This is the default mechanism used by the browsing programs and the recording program.
     * @param wait_time The waiting time for the operation, in seconds, to search for streams.
     *                  Warning: If this is too short (<0.5s) only a subset (or none) of the 
@@ -682,7 +684,7 @@ namespace lsl {
         *                In all other cases (recover is false or the stream is not recoverable) functions may throw a 
         *                lost_error if the stream's source is lost (e.g., due to an app or computer crash).
         */
-        stream_inlet(const stream_info &info, int max_buflen=360, int max_chunklen=0, bool recover=true): obj(lsl_create_inlet(info.handle(),max_buflen,max_chunklen,recover)), channel_count(info.channel_count()) {}
+        stream_inlet(const stream_info &info, int max_buflen=360, int max_chunklen=0, bool recover=true): channel_count(info.channel_count()), obj(lsl_create_inlet(info.handle(),max_buflen,max_chunklen,recover)) {}
 
         /** 
         * Destructor.
@@ -913,6 +915,7 @@ namespace lsl {
                 }
                 return num;
             };
+            return 0;
         }
 
         /**
