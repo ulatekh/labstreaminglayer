@@ -659,7 +659,7 @@ function x = robust_fit(A,y,rho,iters)
 %     minimize 1/2*sum(huber(A*x - y))
 %
 % Based on the ADMM Matlab codes also found at:
-%   http://www.stanford.edu/~boyd/papers/distr_opt_stat_learning_admm.html
+%   http://web.stanford.edu/~boyd/papers/admm_distr_stats.html
 %
 %                                Christian Kothe, Swartz Center for Computational Neuroscience, UCSD
 %                                2013-03-04

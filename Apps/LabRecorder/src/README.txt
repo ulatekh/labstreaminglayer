@@ -15,7 +15,7 @@ The LabRecorder displays a list of currently present device streams under "Recor
 
   For testing several simple dummy devices are in the folder LSL/liblsl/bin (for example SendData, 
   SendStringMarkers, SendDataSimple); you can start any of these programs (and follow the on-screen
-  instructions, if any) to bring a stream online. After you ahve done so, clicking refresh in the recorder
+  instructions, if any) to bring a stream online. After you have done so, clicking refresh in the recorder
   should display the streams in green. 
 
 * You select which streams you want to record from by checking the check boxes next to them.
@@ -73,10 +73,10 @@ The LabRecorder displays a list of currently present device streams under "Recor
 
   By default, the file default_config.cfg is loaded by the program upon startup. You can override this default
   by a) making a shortcut for the LabRecorder program (e.g. on the desktop) and b) adding in its properties
-  the command-line arguments "-c name_of_you_config.cfg" (without the quotes). You can also create a batch script.
+  the command-line arguments "-c name_of_your_config.cfg" (without the quotes). You can also create a batch script.
   
   You can also load the config while the program is already running, but this can easily be forgotten during an
-  experiment, so we recommend to follow the shortcut route.
+  experiment, so we recommend following the shortcut route.
   
 * In addition to the storage location, if your experiment has multiple blocks (e.g., SubjectTraining, PreBaseline, 
   MainBlock, PostBaseline or the like) you can make the recording process even more straightforward for the 
@@ -89,7 +89,7 @@ The LabRecorder displays a list of currently present device streams under "Recor
   wants to record without including the device.
 
 * Advanced users might consider automating further steps in the recording process (for example starting the experiment
-  script itself), which can be done by assinging scripted actions in the configuration file. The file sample_config.cfg 
+  script itself), which can be done by assigning scripted actions in the configuration file. The file sample_config.cfg 
   contains pre-defined actions to remote-control the SNAP experimentation environment. In particular, when you 
   click a block, the corresponding SNAP .cfg file will be loaded, and when you click start, the module will be started.
   
