@@ -72,6 +72,7 @@ private:
 	// game-controller reading support
 	boost::posix_time::ptime ptSystemStart_;
 	double dLocaltimeStart_;
+	int iSampleSequenceNo;
 	lsl::stream_info *infoButtons_;
 	lsl::stream_outlet *outletButtons_;
 	lsl::stream_info *infoAxes_;

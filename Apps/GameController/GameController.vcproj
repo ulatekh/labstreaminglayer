@@ -231,7 +231,7 @@
 				Name="VCCLCompilerTool"
 				AdditionalOptions="-Zm200 -w34100 -w34189"
 				Optimization="2"
-				AdditionalIncludeDirectories="&quot;$(QTSDK)\Desktop\Qt\4.8.1\msvc2008\include\QtCore&quot;;&quot;$(QTSDK)\Desktop\Qt\4.8.1\msvc2008\include\QtGui&quot;;&quot;$(QTSDK)\Desktop\Qt\4.8.1\msvc2008\include&quot;;&quot;$(BOOST_ROOT)&quot;;&quot;$(QTSDK)\Desktop\Qt\4.8.1\msvc2008\include\ActiveQt&quot;;debug;.;&quot;$(QTSDK)\Desktop\Qt\4.8.1\msvc2008\mkspecs\default&quot;;..\..\LSL\liblsl\include"
+				AdditionalIncludeDirectories="&quot;$(QTSDK)\Desktop\Qt\4.8.1\msvc2008\include\QtCore&quot;;&quot;$(QTSDK)\Desktop\Qt\4.8.1\msvc2008\include\QtGui&quot;;&quot;$(QTSDK)\Desktop\Qt\4.8.1\msvc2008\include&quot;;&quot;$(BOOST_ROOT)&quot;;&quot;$(QTSDK)\Desktop\Qt\4.8.1\msvc2008\include\ActiveQt&quot;;release;.;&quot;$(QTSDK)\Desktop\Qt\4.8.1\msvc2008\mkspecs\default&quot;;..\..\LSL\liblsl\include"
 				PreprocessorDefinitions="_WINDOWS,UNICODE,WIN32,QT_LARGEFILE_SUPPORT,QT_DLL,QT_NO_DEBUG,QT_GUI_LIB,QT_CORE_LIB,QT_HAVE_MMX,QT_HAVE_3DNOW,QT_HAVE_SSE,QT_HAVE_MMXEXT,QT_HAVE_SSE2,QT_THREAD_SUPPORT,NDEBUG"
 				GeneratePreprocessedFile="0"
 				ExceptionHandling="1"

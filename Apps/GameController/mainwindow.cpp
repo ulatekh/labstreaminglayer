@@ -23,6 +23,11 @@ QMainWindow(parent), ui(new Ui::MainWindow), pDI(NULL), pController(NULL)
 		ptSystemStart_ = boost::posix_time::microsec_clock::universal_time();
 		dLocaltimeStart_ = lsl::local_clock();
 
+		// Initialize the sample-sequence number.
+		// This is used to match up samples from different files (e.g. the
+		// local log & any remote logs).
+		iSampleSequenceNo = 0;
+
 		ui->setupUi(this);
 
 		HRESULT hr;
@@ -295,7 +300,7 @@ void MainWindow::gamecontroller_start(std::string name)
 	outletButtons_ = new lsl::stream_outlet(*infoButtons_);
 
 	// create streaminfo and outlet for the axes
-	infoAxes_ = new lsl::stream_info(name + "Axes","GameControllerPosition",36,60,lsl::cf_float32,name + "_Axes_" + boost::asio::ip::host_name());
+	infoAxes_ = new lsl::stream_info(name + "Axes","GameControllerPosition",37,60,lsl::cf_float32,name + "_Axes_" + boost::asio::ip::host_name());
 	// append some meta-data...
 	lsl::xml_element channels = infoAxes_->desc().append_child("channels");
 	channels.append_child("channel")
@@ -462,7 +467,7 @@ void MainWindow::gamecontroller_start(std::string name)
 		ss << "log_" << ptNow << ".csv";
 		logFile_.open(ss.str().c_str(), std::ios::out);
 		logStream_ = new std::ostream(&logFile_);
-		(*logStream_) << "Timestamp,X,Y,Z" << std::endl;
+		(*logStream_) << "Timestamp,RawTimestamp,SequenceNo,X,Y" << std::endl;
 	}
 }
 
@@ -480,14 +485,15 @@ void MainWindow::gamecontroller_frame()
 		QMessageBox::critical(this,"Error","Cannot obtain device state.",QMessageBox::Ok);
 
 	double now = lsl::local_clock();
+	++iSampleSequenceNo;
 
 	// construct the axes sample and send it off
-	float sample[36] = {js.lX,js.lY,js.lZ,js.lRx,js.lRy,js.lRz,js.rglSlider[0],js.rglSlider[1],
+	float sample[37] = {iSampleSequenceNo,js.lX,js.lY,js.lZ,js.lRx,js.lRy,js.lRz,js.rglSlider[0],js.rglSlider[1],
 		js.rgdwPOV[0],js.rgdwPOV[1],js.rgdwPOV[2],js.rgdwPOV[3],js.lVX,js.lVY,js.lVZ,js.lVRx,js.lVRy,js.lVRz,
 		js.rglVSlider[0],js.rglVSlider[1],js.lAX,js.lAY,js.lAZ,js.lARx,js.lARy,js.lARz,js.rglASlider[0],
 		js.rglASlider[1],js.lFX,js.lFY,js.lFZ,js.lFRx,js.lFRy,js.lFRz,js.rglFSlider[0],js.rglFSlider[1]};
 	// scale the numbers
-	for (int k=0;k<36;k++)
+	for (int k=1;k<37;k++)
 		sample[k] /= 1000.0;
 	outletAxes_->push_sample(sample,now);
 
@@ -500,11 +506,10 @@ void MainWindow::gamecontroller_frame()
 			+ " " + boost::posix_time::to_simple_string_type<char>(ptNow.time_of_day()) + "Z";
 
 		// Log this game-controller sample.
-		(*logStream_) << strTime << "," << js.lX << "," << js.lY << "," << js.lZ << std::endl;
-		/* char aszMsg[256];
-		sprintf (aszMsg, "%s,%ld,%ld,%ld\n", strTime.c_str(),
-			js.lX, js.lY, js.lZ);
-		::OutputDebugStringA(aszMsg); */
+		(*logStream_) << strTime << ","
+			<< std::fixed << std::setprecision(9) << now << "," << iSampleSequenceNo
+			<< "," << std::setprecision(3) << sample[1] << "," << sample[2]
+			<< ",," << std::endl;
 	}
 
 	// generate the button-event samples...
